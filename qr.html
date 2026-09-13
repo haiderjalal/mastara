@@ -29,8 +29,11 @@ button.ghost{background:#111;border:1px solid #2a2a2a}
 .tent .cat{font-family:var(--head);font-size:10px;letter-spacing:.22em;text-transform:uppercase;
            color:var(--red);margin:2px 0 0}
 .tent .qr{width:168px;height:168px;margin:13px auto 9px}
+.tent.tbl .big{font-family:var(--head);font-size:46px;line-height:1;letter-spacing:.04em;margin:2px 0 0}
+.tent.tbl .big small{display:block;font-size:10px;letter-spacing:.26em;color:var(--red);margin-bottom:2px}
 .tent .qr img,.tent .qr canvas{width:100%;height:100%}
-.tent small{font-family:var(--head);font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:#555}
+.tent .cap{display:block;font-family:var(--head);font-size:9.5px;letter-spacing:.18em;
+           text-transform:uppercase;color:#555}
 .tent .url{font-size:9px;color:#aaa;margin-top:5px;word-break:break-all}
 @media print{
   body{background:#fff}
@@ -44,7 +47,8 @@ button.ghost{background:#111;border:1px solid #2a2a2a}
 <div class="bar">
   <h1>Table QR codes</h1>
   <p>Enter the public address where this menu is hosted, choose what to print, then hit print.
-     Each card opens one dish straight into its 3D / AR view — guests never have to hunt through a list.</p>
+     Table cards open the whole menu with the table number already filled in, so an order
+     arrives at the kitchen tagged <b>Table 7</b>. Dish cards open one dish straight into 3D / AR.</p>
   <div class="row">
     <input id="base" placeholder="https://menu.mastararestaurants.com/" aria-label="Public menu URL">
     <select id="scope" aria-label="Which dishes"></select>
@@ -54,6 +58,7 @@ button.ghost{background:#111;border:1px solid #2a2a2a}
 </div>
 <div class="sheet" id="sheet"></div>
 
+<script src="config.js"></script>
 <script src="menu.js"></script>
 <script>
 const sheet = document.getElementById("sheet");
@@ -61,18 +66,23 @@ const baseInput = document.getElementById("base");
 const scope = document.getElementById("scope");
 
 baseInput.value = location.href.replace(/qr\.html.*$/, "");
-scope.innerHTML = `<option value="all">All ${MENU.length} dishes</option>` +
-  CATEGORIES.map(c => `<option value="${c.id}">${c.label} only</option>`).join("") +
+scope.innerHTML =
+  `<option value="tables">Table cards 1–${CONFIG.tableCount}</option>` +
+  `<option value="all">All ${MENU.length} dishes</option>` +
+  CATEGORIES.map(c => `<option value="${c.id}">${c.label} dishes only</option>`).join("") +
   `<option value="menu">One card for the whole menu</option>`;
 
-function card(title, cat, url) {
+function card({ title, sub, url, caption, table }) {
   const el = document.createElement("div");
-  el.className = "tent";
+  el.className = "tent" + (table ? " tbl" : "");
   el.innerHTML = `<img class="logo" src="img/logo.webp" alt="Mastara">
-    <h2></h2><p class="cat"></p><div class="qr"></div>
-    <small>Scan to see it in 3D</small><div class="url"></div>`;
-  el.querySelector("h2").textContent = title;
-  el.querySelector(".cat").textContent = cat;
+    ${table ? `<p class="big"><small>Table</small>${title}</p>` : `<h2></h2><p class="cat"></p>`}
+    <div class="qr"></div><small class="cap"></small><div class="url"></div>`;
+  if (!table) {
+    el.querySelector("h2").textContent = title;
+    el.querySelector(".cat").textContent = sub;
+  }
+  el.querySelector(".cap").textContent = caption;
   el.querySelector(".url").textContent = url;
   new QRCode(el.querySelector(".qr"), {
     text: url, width: 340, height: 340,
@@ -85,12 +95,21 @@ function card(title, cat, url) {
 function render() {
   const base = baseInput.value.trim().replace(/index\.html$/, "").replace(/\/?$/, "/");
   sheet.innerHTML = "";
+
+  if (scope.value === "tables") {
+    for (let n = 1; n <= CONFIG.tableCount; n++) {
+      card({ title: n, table: true, url: `${base}?t=${n}`,
+             caption: CONFIG.orderingEnabled ? "Scan to view the menu in 3D & order" : "Scan to view the menu in 3D" });
+    }
+    return;
+  }
   if (scope.value === "menu") {
-    card(VENUE.name + " Menu", VENUE.tagline, base);
+    card({ title: VENUE.name + " Menu", sub: VENUE.tagline, url: base, caption: "Scan to view the menu in 3D" });
     return;
   }
   MENU.filter(d => scope.value === "all" || d.cat === scope.value)
-      .forEach(d => card(d.name, CATEGORIES.find(c => c.id === d.cat).label, base + "?d=" + d.slug));
+      .forEach(d => card({ title: d.name, sub: CATEGORIES.find(c => c.id === d.cat).label,
+                           url: `${base}?d=${d.slug}`, caption: "Scan to see it in 3D" }));
 }
 
 document.getElementById("go").onclick = render;

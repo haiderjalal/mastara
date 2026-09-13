@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mastara — Kitchen Display</title>
+<link rel="icon" href="img/logo.webp">
+<meta name="robots" content="noindex">
+<style>
+@font-face{font-family:Oswald;src:url(fonts/oswald.woff2) format("woff2");font-weight:200 700;font-display:swap}
+@font-face{font-family:Raleway;src:url(fonts/raleway.woff2) format("woff2");font-weight:100 900;font-display:swap}
+:root{--red:#d32f23;--ink:#141414;--line:#e3ded8;--paper:#f7f4f0;
+      --head:Oswald,"Arial Narrow",sans-serif;--body:Raleway,system-ui,sans-serif;
+      --new:#d32f23;--prep:#c98a12;--done:#2e8b57}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:400 15px/1.55 var(--body)}
+h1,h2,h3{font-family:var(--head);text-transform:uppercase;letter-spacing:.06em;margin:0}
+button{font:inherit;cursor:pointer}
+
+.top{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+     padding:12px clamp(12px,3vw,24px);background:#fff;border-bottom:1px solid var(--line)}
+.top img{height:30px}
+.top h1{font-size:17px;margin-right:auto}
+.top .meta{font-size:12.5px;color:#7d756c}
+.btn{font-family:var(--head);font-size:12px;letter-spacing:.12em;text-transform:uppercase;
+     padding:9px 14px;border-radius:8px;border:1px solid var(--line);background:#fff}
+.btn.on{background:var(--red);border-color:var(--red);color:#fff}
+
+.filters{display:flex;gap:6px;padding:12px clamp(12px,3vw,24px) 0;flex-wrap:wrap}
+
+.board{display:grid;gap:14px;padding:14px clamp(12px,3vw,24px) 40px;
+       grid-template-columns:repeat(auto-fill,minmax(290px,1fr))}
+.order{background:#fff;border:1px solid var(--line);border-left:6px solid var(--new);border-radius:12px;
+       padding:14px 16px;box-shadow:0 1px 2px rgba(0,0,0,.04);animation:pop .35s ease}
+.order.preparing{border-left-color:var(--prep)}
+.order.served{border-left-color:var(--done);opacity:.62}
+@keyframes pop{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.order header{display:flex;align-items:baseline;gap:10px;margin-bottom:10px}
+.table{font-family:var(--head);font-size:30px;line-height:1;letter-spacing:.02em}
+.table small{font-size:12px;letter-spacing:.2em;color:#8d857b;display:block;margin-bottom:2px}
+.when{margin-left:auto;text-align:right;font-size:12px;color:#8d857b}
+.oid{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:#a39a8f}
+.items{list-style:none;margin:0;padding:0 0 10px}
+.items li{display:flex;gap:10px;padding:5px 0;border-bottom:1px dashed #eee7df;font-size:15.5px}
+.items li:last-child{border-bottom:0}
+.items b{font-family:var(--head);font-weight:600;min-width:30px;color:var(--red)}
+.note{background:#fff6e8;border:1px solid #f0dcb8;border-radius:8px;padding:8px 11px;
+      font-size:13.5px;margin:2px 0 10px}
+.guest{font-size:13px;color:#7d756c;margin-bottom:8px}
+.total{display:flex;justify-content:space-between;font-family:var(--head);font-size:17px;
+       border-top:1px solid var(--line);padding-top:9px;margin-bottom:11px}
+.acts{display:flex;gap:7px;flex-wrap:wrap}
+.acts button{flex:1;padding:10px;border-radius:8px;border:1px solid var(--line);background:#fff;
+             font-family:var(--head);font-size:11.5px;letter-spacing:.1em;text-transform:uppercase}
+.acts button.go{background:var(--ink);border-color:var(--ink);color:#fff}
+.empty{padding:70px 20px;text-align:center;color:#8d857b}
+.empty h2{font-size:20px;margin-bottom:8px;color:var(--ink)}
+.empty code{background:#fff;border:1px solid var(--line);border-radius:6px;padding:2px 6px;font-size:13px}
+
+@media print{
+  .top,.filters,.acts{display:none}
+  body{background:#fff}
+  .board{grid-template-columns:repeat(2,1fr)}
+  .order{break-inside:avoid;box-shadow:none}
+}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <img src="img/logo.webp" alt="Mastara">
+  <h1>Kitchen &amp; Counter</h1>
+  <span class="meta" id="src"></span>
+  <button class="btn" id="sound">🔔 Sound off</button>
+  <button class="btn" id="refresh">Refresh</button>
+  <button class="btn" id="print">Print</button>
+</div>
+
+<div class="filters" id="filters"></div>
+<div class="board" id="board"></div>
+
+<script src="config.js"></script>
+<script src="menu.js"></script>
+<script src="order.js"></script>
+<script>
+const board = document.getElementById("board");
+const LIVE = !!CONFIG.kitchenFeedUrl;
+let filter = "active";
+let soundOn = false;
+let seen = new Set();
+let remote = [];
+
+document.getElementById("src").textContent = LIVE
+  ? `live feed · refreshing every ${Math.round(CONFIG.kitchenPollMs / 1000)}s`
+  : "showing orders placed on this device (no feed URL set)";
+
+const FILTERS = [["active", "Active"], ["new", "New"], ["preparing", "Preparing"], ["served", "Served"], ["all", "All"]];
+document.getElementById("filters").innerHTML =
+  FILTERS.map(([id, label]) => `<button class="btn ${id === filter ? "on" : ""}" data-f="${id}">${label}</button>`).join("");
+document.getElementById("filters").onclick = e => {
+  const b = e.target.closest("[data-f]");
+  if (!b) return;
+  filter = b.dataset.f;
+  document.querySelectorAll("[data-f]").forEach(x => x.classList.toggle("on", x.dataset.f === filter));
+  render();
+};
+
+document.getElementById("refresh").onclick = () => load();
+document.getElementById("print").onclick = () => print();
+document.getElementById("sound").onclick = e => {
+  soundOn = !soundOn;
+  e.currentTarget.textContent = soundOn ? "🔔 Sound on" : "🔔 Sound off";
+  e.currentTarget.classList.toggle("on", soundOn);
+  if (soundOn) beep();     // also unlocks audio on the first user gesture
+};
+
+function beep() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator(), gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.frequency.value = 880; gain.gain.value = 0.09;
+    osc.start();
+    osc.frequency.setValueAtTime(1320, ctx.currentTime + 0.12);
+    osc.stop(ctx.currentTime + 0.26);
+  } catch {}
+}
+
+function ago(iso) {
+  const mins = Math.round((Date.now() - new Date(iso)) / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} min ago`;
+  return `${Math.floor(mins / 60)} h ${mins % 60} m ago`;
+}
+
+/** Orders come either from the configured feed or from this device's own history. */
+async function load() {
+  if (LIVE) {
+    try {
+      const res = await fetch(CONFIG.kitchenFeedUrl, { headers: CONFIG.orderEndpoint.headers || {} });
+      const data = await res.json();
+      remote = Array.isArray(data) ? data : (data.orders || []);
+    } catch (err) {
+      document.getElementById("src").textContent = "feed unreachable — " + err.message;
+    }
+  }
+  render();
+}
+
+function orders() {
+  const all = LIVE ? remote : Order.history();
+  return all
+    .map(o => ({ ...o, status: o.status === "sent" || o.status === "queued" || o.status === "local" ? "new" : o.status }))
+    .filter(o => filter === "all" ? true
+              : filter === "active" ? o.status !== "served"
+              : o.status === filter)
+    .sort((a, b) => new Date(b.placedAt) - new Date(a.placedAt));
+}
+
+function render() {
+  const list = orders();
+
+  // ring once for anything we have not shown before
+  const fresh = list.filter(o => !seen.has(o.orderId));
+  if (fresh.length && seen.size && soundOn) beep();
+  list.forEach(o => seen.add(o.orderId));
+
+  if (!list.length) {
+    board.innerHTML = `<div class="empty" style="grid-column:1/-1">
+      <h2>No orders ${filter === "all" ? "yet" : "in “" + filter + "”"}</h2>
+      <p>${LIVE ? "Waiting for the next ticket." :
+        `Place a test order from the menu on this device, or set <code>kitchenFeedUrl</code> in config.js to read live orders.`}</p></div>`;
+    return;
+  }
+
+  board.innerHTML = list.map(o => `
+    <article class="order ${o.status}">
+      <header>
+        <div class="table"><small>Table</small>${o.table || "—"}</div>
+        <div class="when">${ago(o.placedAt)}<br><span class="oid">${o.orderId}</span></div>
+      </header>
+      <ul class="items">
+        ${o.items.map(i => `<li><b>${i.qty}×</b><span>${i.name}</span></li>`).join("")}
+      </ul>
+      ${o.note ? `<p class="note">📝 ${o.note}</p>` : ""}
+      ${o.guest?.name || o.guest?.phone
+        ? `<p class="guest">${[o.guest.name, o.guest.phone].filter(Boolean).join(" · ")}</p>` : ""}
+      <div class="total"><span>Total</span><span>${money(o.totals.total)}</span></div>
+      <div class="acts">
+        ${o.status === "new" ? `<button class="go" data-set="preparing" data-id="${o.orderId}">Start cooking</button>` : ""}
+        ${o.status !== "served" ? `<button data-set="served" data-id="${o.orderId}">Mark served</button>` : ""}
+        ${o.status === "served" ? `<button data-set="new" data-id="${o.orderId}">Reopen</button>` : ""}
+      </div>
+    </article>`).join("");
+}
+
+board.onclick = e => {
+  const b = e.target.closest("[data-set]");
+  if (!b) return;
+  // Local-only for now: with a real backend this PATCHes the order instead.
+  Order.updateStatus(b.dataset.id, b.dataset.set);
+  if (LIVE) remote = remote.map(o => o.orderId === b.dataset.id ? { ...o, status: b.dataset.set } : o);
+  render();
+};
+
+load();
+setInterval(load, LIVE ? CONFIG.kitchenPollMs : 10000);
+addEventListener("focus", load);
+</script>
+</body>
+</html>

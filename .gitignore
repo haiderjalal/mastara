@@ -5,3 +5,6 @@ assets/brand/mastara-brand-guideline.pdf
 # OS junk
 .DS_Store
 Thumbs.db
+
+# orders captured by the demo receiver
+tools/orders.json

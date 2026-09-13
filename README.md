@@ -1,30 +1,72 @@
-# Mastara — QR → 3D / AR menu
+# Mastara — QR → 3D / AR menu → order to the kitchen
 
-A guest scans the QR code on the table, the dish opens full-screen in 3D, and one tap
-places it life-size on their table in augmented reality. Static site, no build step,
-no framework — three HTML/JS files plus generated assets.
+A guest scans the QR code on their table. The menu opens with the table number already
+known. Any dish spins in 3D and can be placed life-size on the table in AR. They add
+what they want, send the order, and it arrives at the kitchen tagged **Table 12**.
+
+Static site, no build step, no framework.
 
 ```
-index.html   menu grid + ?d=<slug> dish view with 3D/AR   (all CSS + app JS inlined)
-menu.js      41 dishes, 5 cuisines, venue details          (shared with qr.html)
-qr.html      prints one QR table-tent per dish
-img/         WebP photos (560 / 1200 wide) + hero + logo
-models/      one .glb per dish photo
-fonts/       Oswald + Raleway, self-hosted latin subsets
-assets/      source material: original photos, logo, brand guideline PDF
-tools/build.py  regenerates everything in img/ and models/ from assets/
+index.html    menu, 3D/AR dish view, cart, order form, confirmation  (CSS + app JS inlined)
+menu.js       41 dishes across 5 cuisines, prices, venue details
+config.js     everything you change: prices behaviour, tax, tables, where orders go
+order.js      cart, order payload, delivery + offline retry queue
+kitchen.html  counter / kitchen display — live tickets, start-cooking, mark-served
+qr.html       prints QR cards: one per table, or one per dish
+img/          WebP photos (560 / 1200 wide) + hero + logo
+models/       one .glb per dish photo
+fonts/        Oswald + Raleway, self-hosted latin subsets
+assets/       source material: original photos, logo, brand guideline PDF
+tools/build.py              rebuilds img/ and models/ from assets/
+tools/mock-kitchen-server.py  stand-in for the real order system, for demos
+docs/order-payload.md       the JSON contract for whoever receives the orders
 ```
 
 ## Run it
 
 ```bash
-python -m http.server 8765
+python tools/mock-kitchen-server.py
 ```
 
-Open http://localhost:8765/ — and http://localhost:8765/qr.html to print the table cards.
+One command serves everything on http://localhost:8799 —
+
+| | |
+|---|---|
+| http://localhost:8799/?t=12 | the menu, as a guest at table 12 sees it |
+| http://localhost:8799/kitchen.html | the kitchen / counter display |
+| http://localhost:8799/qr.html | print the table QR cards |
+
+Add dishes, send the order, and watch the ticket land on the kitchen screen. Orders are
+written to `tools/orders.json`.
+
+(`python -m http.server` also serves the site — you just get the WhatsApp fallback
+instead of a kitchen screen, because there is no orders API behind it.)
 
 Only `index.html`, `menu.js`, `qr.html`, `img/`, `models/` and `fonts/` need to be deployed;
 `assets/` and `tools/` are source material (the brand PDF alone is 41 MB).
+
+## Ordering, and where the orders go
+
+Everything about ordering is in [`config.js`](config.js). The important line:
+
+```js
+orderEndpoint: { url: "/orders", ... }   // ← point this at the real system
+```
+
+- **Set a URL** and every order is `POST`ed there as JSON. The exact shape is in
+  [`docs/order-payload.md`](docs/order-payload.md) — that file is what you hand to
+  whoever builds the receiving end (POS, KDS, internal API, Zapier/n8n webhook, a sheet).
+- **No URL, or the endpoint is down**: the order is saved on the guest's phone, the guest
+  is offered a WhatsApp button with the ticket already written out to Mastara's number,
+  and the menu retries the POST by itself on their next page load. An order is never lost
+  and never silently dropped.
+- `taxPercent` / `servicePercent` default to **0** — set them only to what Mastara
+  actually charges, they print on the guest's ticket.
+- `tableCount` controls how many table QR cards `qr.html` prints.
+- `orderingEnabled: false` turns the whole thing back into a browse-only 3D menu.
+
+⚠️ **Prices in `menu.js` are placeholders.** The public menu lists none, so plausible
+figures are in there to make the flow work. Replace every one before this goes on a table.
 
 ## Deploy
 
