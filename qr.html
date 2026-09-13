@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mastara — Table QR Codes</title>
+<link rel="icon" href="img/logo.webp">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+@font-face{font-family:Oswald;src:url(fonts/oswald.woff2) format("woff2");font-weight:200 700;font-display:swap}
+@font-face{font-family:Raleway;src:url(fonts/raleway.woff2) format("woff2");font-weight:100 900;font-display:swap}
+:root{--red:#d32f23;--head:Oswald,"Arial Narrow",sans-serif;--body:Raleway,system-ui,sans-serif}
+*{box-sizing:border-box}
+body{margin:0;background:#000;color:#fff;font:400 15px/1.6 var(--body)}
+h1{font-family:var(--head);text-transform:uppercase;letter-spacing:.08em;font-size:22px;margin:0 0 4px}
+.bar{max-width:1100px;margin:0 auto;padding:24px clamp(16px,4vw,28px)}
+.bar p{color:#9a9a9a;font-size:13.5px;margin:0 0 14px;max-width:62ch}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+input,select{padding:11px 13px;border:1px solid #2a2a2a;border-radius:9px;background:#0c0c0c;color:#fff;
+             font:inherit;min-width:min(100%,380px)}
+button{font-family:var(--head);letter-spacing:.14em;text-transform:uppercase;font-size:12.5px;
+       padding:12px 18px;border:0;border-radius:9px;background:var(--red);color:#fff;cursor:pointer}
+button.ghost{background:#111;border:1px solid #2a2a2a}
+.sheet{max-width:1100px;margin:0 auto;padding:8px clamp(16px,4vw,28px) 48px;
+       display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(228px,1fr))}
+.tent{background:#fff;color:#111;border-radius:14px;padding:20px 16px;text-align:center;break-inside:avoid}
+.tent .logo{height:26px;margin:0 auto 12px;display:block}
+.tent h2{font-family:var(--head);text-transform:uppercase;font-size:15.5px;letter-spacing:.05em;margin:0}
+.tent .cat{font-family:var(--head);font-size:10px;letter-spacing:.22em;text-transform:uppercase;
+           color:var(--red);margin:2px 0 0}
+.tent .qr{width:168px;height:168px;margin:13px auto 9px}
+.tent .qr img,.tent .qr canvas{width:100%;height:100%}
+.tent small{font-family:var(--head);font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:#555}
+.tent .url{font-size:9px;color:#aaa;margin-top:5px;word-break:break-all}
+@media print{
+  body{background:#fff}
+  .bar{display:none}
+  .sheet{padding:0;gap:0;grid-template-columns:repeat(3,1fr)}
+  .tent{border:1px dashed #ccc;border-radius:0;page-break-inside:avoid}
+}
+</style>
+</head>
+<body>
+<div class="bar">
+  <h1>Table QR codes</h1>
+  <p>Enter the public address where this menu is hosted, choose what to print, then hit print.
+     Each card opens one dish straight into its 3D / AR view — guests never have to hunt through a list.</p>
+  <div class="row">
+    <input id="base" placeholder="https://menu.mastararestaurants.com/" aria-label="Public menu URL">
+    <select id="scope" aria-label="Which dishes"></select>
+    <button id="go">Regenerate</button>
+    <button class="ghost" id="print">Print</button>
+  </div>
+</div>
+<div class="sheet" id="sheet"></div>
+
+<script src="menu.js"></script>
+<script>
+const sheet = document.getElementById("sheet");
+const baseInput = document.getElementById("base");
+const scope = document.getElementById("scope");
+
+baseInput.value = location.href.replace(/qr\.html.*$/, "");
+scope.innerHTML = `<option value="all">All ${MENU.length} dishes</option>` +
+  CATEGORIES.map(c => `<option value="${c.id}">${c.label} only</option>`).join("") +
+  `<option value="menu">One card for the whole menu</option>`;
+
+function card(title, cat, url) {
+  const el = document.createElement("div");
+  el.className = "tent";
+  el.innerHTML = `<img class="logo" src="img/logo.webp" alt="Mastara">
+    <h2></h2><p class="cat"></p><div class="qr"></div>
+    <small>Scan to see it in 3D</small><div class="url"></div>`;
+  el.querySelector("h2").textContent = title;
+  el.querySelector(".cat").textContent = cat;
+  el.querySelector(".url").textContent = url;
+  new QRCode(el.querySelector(".qr"), {
+    text: url, width: 340, height: 340,
+    colorDark: "#111111", colorLight: "#ffffff",
+    correctLevel: QRCode.CorrectLevel.M,
+  });
+  sheet.appendChild(el);
+}
+
+function render() {
+  const base = baseInput.value.trim().replace(/index\.html$/, "").replace(/\/?$/, "/");
+  sheet.innerHTML = "";
+  if (scope.value === "menu") {
+    card(VENUE.name + " Menu", VENUE.tagline, base);
+    return;
+  }
+  MENU.filter(d => scope.value === "all" || d.cat === scope.value)
+      .forEach(d => card(d.name, CATEGORIES.find(c => c.id === d.cat).label, base + "?d=" + d.slug));
+}
+
+document.getElementById("go").onclick = render;
+document.getElementById("print").onclick = () => print();
+scope.onchange = render;
+render();
+</script>
+</body>
+</html>

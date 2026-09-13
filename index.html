@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Mastara — 3D Menu</title>
+<meta name="description" content="Scan, tap, and see every Mastara dish in 3D on your own table. Rooftop dining at Galleria Mall, I-8 Markaz, Islamabad.">
+<meta name="theme-color" content="#000000">
+<link rel="icon" href="img/logo.webp">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Mastara — 3D Menu">
+<meta property="og:description" content="Scan, tap, and see every Mastara dish in 3D on your own table.">
+<meta property="og:image" content="img/hero-1600.webp">
+
+<link rel="preload" href="fonts/oswald.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/raleway.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" as="image" fetchpriority="high" href="img/hero-900.webp"
+      imagesrcset="img/hero-900.webp 900w, img/hero-1600.webp 1600w" imagesizes="100vw">
+<link rel="preload" href="menu.js" as="script">
+
+<style>
+@font-face{font-family:Oswald;src:url(fonts/oswald.woff2) format("woff2");font-weight:200 700;font-display:swap}
+@font-face{font-family:Raleway;src:url(fonts/raleway.woff2) format("woff2");font-weight:100 900;font-display:swap}
+
+:root{
+  --red:#d32f23; --red-dark:#b52419; --red-light:#e54a3f;
+  --black:#000; --g1:#0c0c0c; --g2:#1a1a1a; --g3:#2a2a2a;
+  --white:#fff; --muted:#9a9a9a;
+  --head:Oswald,"Arial Narrow",system-ui,sans-serif;
+  --body:Raleway,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --pad:clamp(16px,5vw,32px);
+  --max:1120px;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--black);color:var(--white);font:400 16px/1.6 var(--body);
+     -webkit-font-smoothing:antialiased;overflow-x:hidden}
+img{max-width:100%;display:block}
+a{color:inherit;text-decoration:none}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--red-light);outline-offset:3px;border-radius:4px}
+.wrap{max-width:var(--max);margin:0 auto;padding-inline:var(--pad)}
+.eyebrow{font-family:var(--head);font-weight:500;font-size:12px;letter-spacing:.34em;
+         text-transform:uppercase;color:var(--red);margin:0}
+h1,h2,h3{font-family:var(--head);font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin:0}
+
+/* ---------- top bar ---------- */
+.topbar{position:sticky;top:0;z-index:40;display:flex;align-items:center;justify-content:space-between;
+        gap:12px;padding:10px var(--pad);background:rgba(0,0,0,.72);
+        backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid #191919}
+.topbar img{height:34px;width:auto}
+.chip{font-family:var(--head);font-size:11px;letter-spacing:.2em;text-transform:uppercase;
+      border:1px solid var(--red);color:var(--red-light);padding:5px 11px;border-radius:999px;white-space:nowrap}
+
+/* ---------- hero ---------- */
+.hero{position:relative;min-height:min(62vh,460px);display:grid;align-items:end;overflow:hidden}
+.hero>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+          animation:slowzoom 18s ease-out forwards}
+.hero::after{content:"";position:absolute;inset:0;
+  background:linear-gradient(180deg,rgba(0,0,0,.55) 0%,rgba(0,0,0,.35) 42%,#000 100%)}
+.hero .inner{position:relative;z-index:2;padding:56px 0 30px}
+.hero h1{font-size:clamp(40px,13vw,86px);line-height:.92;letter-spacing:.02em}
+.hero h1 span{color:var(--red)}
+.hero p{max-width:34ch;color:#d8d8d8;margin:12px 0 0;font-size:15px}
+.rise{opacity:0;transform:translateY(22px);animation:rise .85s cubic-bezier(.2,.7,.3,1) forwards}
+.rise:nth-child(2){animation-delay:.1s}.rise:nth-child(3){animation-delay:.2s}.rise:nth-child(4){animation-delay:.3s}
+@keyframes rise{to{opacity:1;transform:none}}
+@keyframes slowzoom{from{transform:scale(1.1)}to{transform:scale(1)}}
+
+/* ---------- marquee ---------- */
+.ribbon{border-block:1px solid #1e1e1e;background:var(--g1);overflow:hidden;padding:11px 0}
+.ribbon div{display:flex;gap:30px;width:max-content;animation:slide 34s linear infinite;
+            font-family:var(--head);font-size:12px;letter-spacing:.26em;text-transform:uppercase;color:#6d6d6d}
+.ribbon b{color:var(--red);font-weight:500}
+@keyframes slide{to{transform:translateX(-50%)}}
+
+/* ---------- category tabs ---------- */
+.tabs{position:sticky;top:55px;z-index:30;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;
+      padding:12px var(--pad);background:linear-gradient(180deg,#000 62%,transparent)}
+.tabs::-webkit-scrollbar{display:none}
+.tabs button{font-family:var(--head);font-size:13px;letter-spacing:.16em;text-transform:uppercase;
+  color:#8d8d8d;border:1px solid #242424;border-radius:999px;padding:8px 15px;white-space:nowrap;
+  transition:color .2s,border-color .2s,background-color .2s}
+.tabs button[aria-selected=true]{color:var(--white);background:var(--red);border-color:var(--red)}
+
+/* ---------- grid ---------- */
+.count{color:var(--muted);font-size:13px;margin:6px 0 14px}
+.grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(min(100%,268px),1fr));padding-bottom:40px}
+.card{position:relative;background:var(--g1);border:1px solid #1d1d1d;border-radius:16px;overflow:hidden;
+      display:flex;flex-direction:column;opacity:0;transform:translateY(16px);
+      transition:opacity .5s ease,transform .5s ease,border-color .25s}
+.card.in{opacity:1;transform:none}
+.card:hover{border-color:var(--red)}
+.card .shot{position:relative;aspect-ratio:4/3;overflow:hidden;background:var(--g2)}
+.card .shot img{width:100%;height:100%;object-fit:cover;transition:transform .5s ease}
+.card:hover .shot img{transform:scale(1.06)}
+.card .shot::after{content:"";position:absolute;inset:0;
+  background:linear-gradient(180deg,transparent 45%,rgba(0,0,0,.75) 100%)}
+.view3d{position:absolute;z-index:2;right:9px;bottom:9px;display:flex;align-items:center;gap:6px;
+  font-family:var(--head);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
+  background:rgba(211,47,35,.94);padding:5px 9px;border-radius:999px}
+.view3d svg{width:12px;height:12px}
+.card .body{padding:12px 14px 15px;display:flex;flex-direction:column;gap:6px;flex:1}
+.card h3{font-size:16.5px;letter-spacing:.03em}
+.card p{margin:0;color:var(--muted);font-size:13.2px;line-height:1.5}
+.tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:auto;padding-top:6px}
+.tag{font-family:var(--head);font-size:10px;letter-spacing:.13em;text-transform:uppercase;
+     border:1px solid #2c2c2c;color:#a5a5a5;border-radius:999px;padding:3px 8px}
+.tag.popular{color:#f0c674;border-color:#4a3c1c}
+.tag.spicy{color:var(--red-light);border-color:#4a1a16}
+.tag.veg{color:#6fcf97;border-color:#1d4030}
+.tag.chefs{color:#e6e6e6;border-color:#3a3a3a}
+
+/* ---------- dish view ---------- */
+.back{display:inline-flex;align-items:center;gap:8px;font-family:var(--head);font-size:12px;
+      letter-spacing:.18em;text-transform:uppercase;color:var(--muted);padding:18px 0 12px}
+.stage{position:relative;border:1px solid #1d1d1d;border-radius:20px;overflow:hidden;background:var(--g1)}
+.stage model-viewer,.stage .fallback{width:100%;height:min(56vh,430px);display:block;
+  --poster-color:transparent;background:
+  radial-gradient(120% 80% at 50% 12%,#232323 0%,#0a0a0a 70%)}
+.stage .fallback{object-fit:cover}
+.spin{position:absolute;left:50%;translate:-50% 0;bottom:12px;margin:0;white-space:nowrap;
+      background:rgba(0,0,0,.55);padding:4px 11px;border-radius:999px;backdrop-filter:blur(4px);
+      font-family:var(--head);font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+      color:#7a7a7a;pointer-events:none}
+.dish{padding:20px 0 8px}
+.dish h2{font-size:clamp(26px,7vw,40px);line-height:1.05}
+.dish .price{font-family:var(--head);color:var(--red-light);font-size:22px}
+.dish p.desc{color:#c9c9c9;margin:10px 0 0;font-size:15.5px;max-width:58ch}
+.btns{display:flex;gap:10px;flex-wrap:wrap;margin:20px 0 6px}
+.btn{flex:1 1 190px;display:flex;align-items:center;justify-content:center;gap:9px;text-align:center;
+  font-family:var(--head);font-size:13.5px;letter-spacing:.14em;text-transform:uppercase;
+  padding:15px 18px;border-radius:12px;border:1px solid #2a2a2a;background:var(--g1);
+  transition:background-color .2s,border-color .2s,transform .1s}
+.btn:active{transform:translateY(1px)}
+.btn svg{width:17px;height:17px}
+.btn.primary{background:var(--red);border-color:var(--red)}
+.btn.primary:hover{background:var(--red-dark)}
+.btn.wa{border-color:#1f4d33;color:#67d38b}
+.btn[disabled]{opacity:.45;cursor:default}
+.note{color:#6f6f6f;font-size:12.5px;margin:12px 0 0}
+.more{margin:34px 0 10px}
+.rail{display:flex;gap:12px;overflow-x:auto;padding-bottom:12px;scroll-snap-type:x mandatory;scrollbar-width:none}
+.rail::-webkit-scrollbar{display:none}
+.rail a{flex:0 0 148px;scroll-snap-align:start}
+.rail img{aspect-ratio:1;object-fit:cover;border-radius:12px;border:1px solid #1d1d1d;width:100%}
+.rail span{display:block;font-family:var(--head);font-size:12px;letter-spacing:.08em;
+           text-transform:uppercase;margin-top:7px;color:#cfcfcf}
+
+/* ---------- footer ---------- */
+footer{border-top:1px solid #171717;margin-top:42px;padding:30px 0 44px;background:var(--g1)}
+footer .cols{display:grid;gap:22px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+footer h4{font-family:var(--head);font-size:11px;letter-spacing:.24em;text-transform:uppercase;
+          color:var(--red);margin:0 0 8px;font-weight:500}
+footer p,footer a{color:#a8a8a8;font-size:13.6px;margin:0 0 4px}
+footer a:hover{color:var(--white)}
+.legal{color:#5a5a5a;font-size:11.5px;margin-top:24px;letter-spacing:.04em}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;
+                        transition-duration:.01ms!important}
+  .card{opacity:1;transform:none}
+}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <a href="./" aria-label="Mastara home"><img src="img/logo.webp" alt="Mastara — Bite &amp; Bubbles" width="146" height="34" fetchpriority="high"></a>
+  <span class="chip">Scan · Tap · See it in 3D</span>
+</header>
+
+<main id="app"></main>
+
+<footer>
+  <div class="wrap cols" id="foot"></div>
+</footer>
+
+<script src="menu.js"></script>
+<script>
+const app = document.getElementById("app");
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
+const bySlug = s => MENU.find(d => d.slug === s);
+let activeCat = "desi";
+let mvLoaded = null;
+
+const ICON_CUBE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 2.6 21 7.4v9.2L12 21.4 3 16.6V7.4z"/><path d="M3 7.4 12 12l9-4.6M12 12v9.4"/></svg>';
+const ICON_WA = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-8.6 15L2 22l5.2-1.4A10 10 0 1 0 12 2Zm5.8 14.2c-.2.7-1.4 1.3-2 1.4-.5.1-1.1.1-1.8-.1-.4-.1-1-.3-1.7-.6-3-1.3-4.9-4.3-5-4.5-.2-.2-1.2-1.6-1.2-3s.7-2.1 1-2.4c.2-.3.5-.4.7-.4h.5c.2 0 .4 0 .6.5l.8 2c.1.2.1.4 0 .5l-.3.5-.4.4c-.1.1-.3.3-.1.6.2.3.8 1.3 1.7 2.1 1.2 1 2.1 1.4 2.4 1.5.3.1.4.1.6-.1l.9-1c.2-.2.4-.2.6-.1l2 1c.2.1.4.2.4.3.1.2.1.7-.1 1.4Z"/></svg>';
+
+/* ------------------------------------------------------------------ menu view */
+function cardHTML(d) {
+  return `<a class="card" href="?d=${d.slug}" data-slug="${d.slug}">
+    <div class="shot">
+      <img src="img/${d.img}-560.webp"
+           srcset="img/${d.img}-560.webp 560w, img/${d.img}-1200.webp 1200w"
+           sizes="(max-width:640px) 92vw, 300px"
+           alt="${esc(d.name)}" width="560" height="420" loading="lazy" decoding="async">
+      <span class="view3d">${ICON_CUBE} View in 3D</span>
+    </div>
+    <div class="body">
+      <h3>${esc(d.name)}${d.price ? ` <span class="price">${esc(d.price)}</span>` : ""}</h3>
+      <p>${esc(d.desc)}</p>
+      <div class="tags">${d.badges.map(b =>
+        `<span class="tag ${b}">${BADGES[b].mark} ${BADGES[b].label}</span>`).join("")}</div>
+    </div>
+  </a>`;
+}
+
+function renderMenu() {
+  document.title = "Mastara — 3D Menu";
+  const cat = CATEGORIES.find(c => c.id === activeCat);
+  app.innerHTML = `
+    <section class="hero">
+      <img src="img/hero-900.webp" srcset="img/hero-900.webp 900w, img/hero-1600.webp 1600w"
+           sizes="100vw" alt="" width="900" height="900" fetchpriority="high" decoding="async">
+      <div class="inner wrap">
+        <p class="eyebrow rise">Rooftop · Islamabad</p>
+        <h1 class="rise">Our <span>Menu</span></h1>
+        <p class="rise">Tap any dish to spin it in 3D — then place it on your table in augmented reality before you order.</p>
+      </div>
+    </section>
+
+    <div class="ribbon" aria-hidden="true"><div id="ribbon"></div></div>
+
+    <nav class="tabs" role="tablist" aria-label="Cuisine">
+      ${CATEGORIES.map(c => `<button role="tab" data-cat="${c.id}"
+        aria-selected="${c.id === activeCat}">${c.label}</button>`).join("")}
+    </nav>
+
+    <div class="wrap">
+      <p class="count">${cat.tagline} — ${MENU.filter(d => d.cat === activeCat).length} dishes</p>
+      <div class="grid" id="grid">${MENU.filter(d => d.cat === activeCat).map(cardHTML).join("")}</div>
+    </div>`;
+
+  const words = ["Rooftop Dining", "100% Halal", "Live BBQ Station", "Panoramic Views",
+                 "Desi", "Thai", "Chinese", "Fast Food", "Continental", "Live Qawali"];
+  const strip = words.map(w => `<span>${w}</span><b>✦</b>`).join("");
+  document.getElementById("ribbon").innerHTML = strip + strip;
+
+  app.querySelectorAll(".tabs button").forEach(b => b.onclick = () => {
+    activeCat = b.dataset.cat;
+    renderMenu();
+    document.querySelector(".tabs").scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+  reveal();
+}
+
+/* reveal cards as they scroll in */
+function reveal() {
+  const io = new IntersectionObserver((entries, obs) => {
+    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add("in"); obs.unobserve(e.target); } });
+  }, { rootMargin: "80px" });
+  app.querySelectorAll(".card").forEach((c, i) => {
+    c.style.transitionDelay = (i % 6) * 45 + "ms";
+    io.observe(c);
+  });
+}
+
+/* ------------------------------------------------------------------ dish view */
+async function renderDish(d) {
+  document.title = `${d.name} — Mastara 3D Menu`;
+  const related = MENU.filter(x => x.cat === d.cat && x.slug !== d.slug).slice(0, 8);
+  const waText = encodeURIComponent(`Hi Mastara! I'd like to order ${d.name}.`);
+
+  app.innerHTML = `<div class="wrap">
+    <a class="back" href="./">← All dishes</a>
+    <div class="stage">
+      <img class="fallback" id="poster" src="img/${d.img}-1200.webp" alt="${esc(d.name)}" width="1200" height="1200">
+      <p class="spin">Loading 3D…</p>
+    </div>
+    <div class="dish">
+      <p class="eyebrow">${CATEGORIES.find(c => c.id === d.cat).label}</p>
+      <h2>${esc(d.name)}${d.price ? ` <span class="price">${esc(d.price)}</span>` : ""}</h2>
+      <div class="tags">${d.badges.map(b =>
+        `<span class="tag ${b}">${BADGES[b].mark} ${BADGES[b].label}</span>`).join("")}</div>
+      <p class="desc">${esc(d.desc)}</p>
+      <div class="btns">
+        <button class="btn primary" id="ar">${ICON_CUBE} View on my table</button>
+        <a class="btn wa" href="https://wa.me/${VENUE.whatsapp}?text=${waText}" target="_blank" rel="noopener">${ICON_WA} Order on WhatsApp</a>
+      </div>
+      <p class="note">Augmented reality works on most phones — Android (Chrome) and iPhone (Safari). On a laptop you can still drag to spin the dish.</p>
+    </div>
+    ${related.length ? `<div class="more">
+      <p class="eyebrow">More ${CATEGORIES.find(c => c.id === d.cat).label.toLowerCase()}</p>
+      <div class="rail">${related.map(r => `<a href="?d=${r.slug}">
+        <img src="img/${r.img}-560.webp" alt="${esc(r.name)}" width="560" height="560" loading="lazy" decoding="async">
+        <span>${esc(r.name)}</span></a>`).join("")}</div></div>` : ""}
+  </div>`;
+
+  mvLoaded ||= import("https://cdn.jsdelivr.net/npm/@google/model-viewer@4.3.1/dist/model-viewer.min.js");
+  await mvLoaded;
+
+  const mv = document.createElement("model-viewer");
+  Object.entries({
+    src: `models/${d.model}.glb`,
+    alt: `3D model of ${d.name}`,
+    poster: `img/${d.img}-1200.webp`,
+    "camera-controls": "", "touch-action": "pan-y",
+    "auto-rotate": "", "auto-rotate-delay": "600", "rotation-per-second": "22deg",
+    "camera-orbit": "25deg 65deg 0.78m", "min-camera-orbit": "auto 0deg 0.4m",
+    "max-camera-orbit": "auto 95deg 1.6m", "field-of-view": "30deg",
+    "shadow-intensity": "1.1", "shadow-softness": "0.8", exposure: "1.05",
+    "environment-image": "neutral", "interaction-prompt": "none",
+    ar: "", "ar-modes": "webxr scene-viewer quick-look", "ar-placement": "floor", "ar-scale": "fixed",
+  }).forEach(([k, v]) => mv.setAttribute(k, v));
+  mv.innerHTML = '<button slot="ar-button" hidden></button>';
+
+  const stage = app.querySelector(".stage");
+  stage.querySelector("#poster").remove();
+  stage.prepend(mv);
+  const spin = stage.querySelector(".spin");
+  const ar = document.getElementById("ar");
+  ar.onclick = () => mv.activateAR();
+
+  // canActivateAR is only meaningful once the model is in — until then, assume AR works.
+  mv.addEventListener("load", () => {
+    spin.textContent = "Drag to spin · pinch to zoom";
+    if (!mv.canActivateAR) {
+      ar.innerHTML = ICON_CUBE + " AR needs a phone";
+      ar.disabled = true;
+      ar.classList.remove("primary");
+    }
+  }, { once: true });
+  mv.addEventListener("error", () => spin.textContent = "3D unavailable", { once: true });
+}
+
+/* ------------------------------------------------------------------ footer + routing */
+function renderFooter() {
+  document.getElementById("foot").innerHTML = `
+    <div>
+      <h4>Mastara</h4>
+      <p>${esc(VENUE.tagline)}</p>
+      <p>${esc(VENUE.blurb)}</p>
+    </div>
+    <div>
+      <h4>Find us</h4>
+      <p>${esc(VENUE.address)}</p>
+      <p><a href="tel:+${VENUE.whatsapp}">${esc(VENUE.phone)}</a></p>
+    </div>
+    <div>
+      <h4>Hours</h4>
+      <p>${esc(VENUE.hours)}</p>
+      <p>100% Halal certified</p>
+    </div>
+    <div>
+      <h4>Links</h4>
+      <p><a href="${VENUE.site}" target="_blank" rel="noopener">mastararestaurants.com</a></p>
+      <p><a href="${VENUE.instagram}" target="_blank" rel="noopener">@mastaraislamabad</a></p>
+      <p><a href="https://wa.me/${VENUE.whatsapp}" target="_blank" rel="noopener">WhatsApp us</a></p>
+    </div>
+    <p class="legal">Sample 3D menu — dish models are generated from Mastara photography.</p>`;
+}
+
+function route() {
+  const slug = new URLSearchParams(location.search).get("d");
+  const dish = slug && bySlug(slug);
+  if (dish) { activeCat = dish.cat; renderDish(dish); } else { renderMenu(); }
+  scrollTo({ top: 0, behavior: "instant" });
+}
+
+addEventListener("click", e => {
+  const a = e.target.closest("a[href^='?'], a[href='./']");
+  if (!a || e.metaKey || e.ctrlKey || e.shiftKey) return;
+  e.preventDefault();
+  history.pushState({}, "", a.getAttribute("href"));
+  document.startViewTransition ? document.startViewTransition(route) : route();
+});
+addEventListener("popstate", route);
+
+renderFooter();
+route();
+</script>
+</body>
+</html>

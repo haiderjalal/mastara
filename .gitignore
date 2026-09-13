@@ -1,0 +1,7 @@
+# 41 MB brand guideline — re-download from
+# https://www.mastararestaurants.com/brand/ when needed
+assets/brand/mastara-brand-guideline.pdf
+
+# OS junk
+.DS_Store
+Thumbs.db
