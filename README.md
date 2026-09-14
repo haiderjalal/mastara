@@ -22,6 +22,10 @@ tools/mock-kitchen-server.py  stand-in for the real order system, for demos
 docs/order-payload.md       the JSON contract for whoever receives the orders
 ```
 
+Rebuilding this for a different restaurant? [`BLUEPRINT.md`](BLUEPRINT.md) is the
+portable spec — hand that one file to a new project and it has everything: what to ask
+the client, the scraping recipe, the 3D numbers, the order contract, and the gotchas.
+
 ## Run it
 
 ```bash
