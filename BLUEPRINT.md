@@ -181,15 +181,50 @@ Proven numbers, do not "improve" them without measuring:
 | Parameter | Value | Why |
 |---|---|---|
 | Plate diameter | 0.27 m | real plate; AR at true size |
-| Dome height / depth / rim | 0.055 / 0.014 / 0.006 m | reads as food, not a coaster |
+| Dome height / depth / rim | 0.055 / 0.014 / 0.006 m, × a per-dish scale | a rice mound and a soup aren't the same shape — see below |
 | Mesh rings × segments | 30 × 60 | smooth enough; halving from 44×80 halved file size |
 | Indices | `uint16` (5123) | verts < 65536, halves index bytes |
-| Texture | 768 px, JPEG q80, embedded | ~150–230 KB GLB total |
+| Texture | 768 px, JPEG q82 colour + q80 normal map, embedded | ~200–270 KB GLB total |
 | Profile | `dome·(1−(t/0.78)²)^0.85 + 0.006·t⁵` | food mound + slight rim curl |
 | UV | planar, `0.5 ± 0.47·(x/R)` | photo maps top-down onto the dome |
 
 Geometry, not texture, dominates once the texture is small — that is why ring/segment
 count and 16-bit indices matter.
+
+**The texture is a composite, not the raw photo — this is what makes it read as a plate
+instead of a photo glued onto a blob.** Two things were wrong with mapping the dish photo
+straight onto the whole mesh: the rim and underside showed whatever was in the photo's
+*background* (table, other bowls) instead of a plate colour, and a flat photo on a curved
+dome has no per-pixel shading, so it looks like exactly what it is — a picture wrapped
+around a bump.
+
+- **Ceramic base + feathered photo.** Generate a soft radial-gradient "plate" (bright
+  centre, gentle falloff, a thin bright ring near the rim from `ceramic_base()`), then
+  `Image.composite()` the dish photo into just the centre through a Gaussian-blurred
+  circular mask sized to `FOOD_FRAC = 0.74` of the texture diameter — matched to the
+  `0.78` dome-edge constant in the height profile, so the texture's food patch and the
+  mesh's food mound line up. Everything outside that circle (rim, outer wall, underside)
+  samples the ceramic gradient, never the photo.
+- **A normal map derived from the same composite**, not a separate asset: blur slightly,
+  then take the luminance gradient (`ImageChops.subtract` against a 1px-offset copy, once
+  per axis) and pack it as (dx, dy, 255) into an RGB image. Real food isn't flat — rice
+  grains, char, sauce ripples — so this lets the surface catch light unevenly instead of
+  shading like a smooth dome. Save as JPEG, not PNG: a lossless normal map is "more
+  correct" but a mostly-flat-plus-fine-detail image compresses far worse as PNG (~490 KB
+  vs ~80 KB here) for a difference nobody will see at this amplification.
+- **Every UV sample outside the food circle must land in the ceramic zone**, including
+  the ones that seem unimportant. The underside cap originally sampled a small radius
+  near texture-centre (inside the food circle) on the theory that it's "barely ever seen"
+  — but `max-camera-orbit` allows dragging to 95° polar, and at a grazing angle the
+  underside *is* visible, showing raw food-photo colour (a mint leaf read as a dark green
+  smear across what should be a plain plate bottom). Point every non-dome UV sample at
+  the same safe radius the wall uses (`R·cx·0.985`), not just the obviously-visible ones.
+- **Per-dish dome height** (`DOME_SCALE`, a slug → multiplier dict): a rice dish
+  (biryani, pulao) piles up, so scale >1; a stew or soup (nihari, haleem, dal) lies
+  almost flat, so scale ~0.5; skewered/grilled items (kebab, tikka) are flatter
+  arrangements, ~0.55. Unlisted dishes (and the 4 category-fallback models) default to
+  1.0. Cheap to add, and the single biggest tell if skipped — a 5.5 cm-tall mound of dal
+  looks wrong next to the real bowl on the table.
 
 **Subject-aware cropping is essential.** A centre crop puts an off-centre bowl at the
 edge of the plate and renders a black disc. Score each pixel of a 64×64 probe by

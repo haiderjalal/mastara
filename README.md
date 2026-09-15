@@ -98,9 +98,13 @@ and it appears on both the card and the dish page.
 ## The 3D models
 
 `tools/build.py` generates a GLB per dish: a 27 cm plate — a shallow dish with a food
-dome — with the dish photograph mapped onto it. Sized in real-world metres, so AR places
-it at true size on the table. ~190 KB each, and only the one dish being viewed is ever
-downloaded.
+dome shaped to that dish (a rice mound piles up, a stew or soup lies almost flat) — sized
+in real-world metres, so AR places it at true size on the table. The texture isn't the
+raw photo: it's a ceramic-plate gradient with the food photo feathered into just the dome
+area, so the rim reads as a plate edge instead of showing whatever was in the photo's
+background, plus a normal map baked from the photo's own detail (rice grains, char, sauce
+ripples) so the surface catches light unevenly instead of looking like a photo glued onto
+a smooth bump. ~200–270 KB each, and only the one dish being viewed is ever downloaded.
 
 ```bash
 python tools/build.py     # needs Pillow:  pip install pillow

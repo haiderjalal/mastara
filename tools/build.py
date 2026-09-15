@@ -7,9 +7,15 @@ Output: img/*.webp  and  models/*.glb
 The GLB is a "plate" mesh — a shallow dish with a food dome in the middle — with the
 dish photograph mapped onto it and sized to a real 27 cm plate, so AR places it on the
 table at true size. Replace any .glb with a real photogrammetry scan when you have one.
+
+The texture is a composite, not the raw photo: a soft ceramic-plate gradient with the
+food photo blended into just the dome area, so the rim reads as a plate edge instead of
+whatever was in the background of the photo. A normal map derived from the photo's own
+detail (rice grains, char, sauce texture) is baked in too, so the surface catches light
+unevenly instead of looking like a photo glued onto a smooth bump.
 """
 import io, json, math, os, struct, glob
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFilter, ImageChops
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(ROOT)
@@ -68,12 +74,64 @@ def build_images(src: str, slug: str, sizes=((560, 72), (1200, 76))) -> None:
 # ---------------------------------------------------------------- 3D plate
 PLATE_D, DOME, RIM, DEPTH = 0.27, 0.055, 0.006, 0.014   # metres
 NR, NS = 30, 60                                          # rings, segments
+DOME_EDGE = 0.78   # fraction of plate radius where the food mound ends (matches FOOD_FRAC below)
 
-def profile(t: float) -> float:
-    food = DOME * max(0.0, 1.0 - (t / 0.78) ** 2) ** 0.85
+# Real dishes aren't all the same shape — a rice mound piles up, a stew lies flat.
+# Height is a multiplier on DOME; skipped dishes (incl. the 4 category fallbacks) get 1.0.
+DOME_SCALE = {
+    "chicken-biryani": 1.15, "mutton-pulao": 1.1,
+    "mutton-karahi": 0.75, "chicken-karahi": 0.75,
+    "beef-nihari": 0.55, "haleem": 0.5, "dal-makhani": 0.5,
+    "seekh-kebab": 0.55, "chicken-tikka": 0.55,
+}
+
+def profile(t: float, scale: float = 1.0) -> float:
+    food = DOME * scale * max(0.0, 1.0 - (t / DOME_EDGE) ** 2) ** 0.85
     return food + RIM * t ** 5
 
-def build_glb(src_photo: str, out: str, tex_px: int = 768) -> None:
+# ------------------------------------------------------------- plate texture
+FOOD_FRAC = 0.74   # diameter of the food photo circle, as a fraction of the full texture —
+                    # matched to DOME_EDGE so the texture's food patch lines up with the mesh's food dome
+
+def ceramic_base(size: int, tint=(241, 235, 224)) -> Image.Image:
+    """A plain plate is a gradient, not a texture: bright centre, gentle falloff,
+    a thin bright ring where light catches the rim's bevel."""
+    n = 128
+    c = n / 2
+    edge_shade = int(232 - 34 * 0.7 ** 1.3)   # matches the f=1.0 ring below — keeps the untextured corners consistent
+    g = Image.new("L", (n, n), edge_shade)
+    d = ImageDraw.Draw(g)
+    for i in range(int(c), 0, -1):
+        f = i / c
+        shade = 232 - 34 * max(0.0, f - 0.3) ** 1.3
+        shade += 16 * math.exp(-((f - 0.88) ** 2) / 0.006)
+        d.ellipse([c - i, c - i, c + i, c + i], fill=int(max(0, min(255, shade))))
+    g = g.filter(ImageFilter.GaussianBlur(2)).resize((size, size), Image.LANCZOS)
+    return Image.merge("RGB", [g.point(lambda v, ch=ch: v * ch // 232) for ch in tint])
+
+def build_texture(src_photo: str, tex_px: int) -> Image.Image:
+    """Ceramic plate gradient with the dish photo feathered into the food-dome area only —
+    the rim and underside stay a clean plate colour instead of showing photo background."""
+    food = square(Image.open(src_photo).convert("RGB"), margin=0.03).resize((tex_px, tex_px), Image.LANCZOS)
+    base = ceramic_base(tex_px)
+    mask = Image.new("L", (tex_px, tex_px), 0)
+    r = tex_px * FOOD_FRAC / 2
+    c = tex_px / 2
+    ImageDraw.Draw(mask).ellipse([c - r, c - r, c + r, c + r], fill=255)
+    mask = mask.filter(ImageFilter.GaussianBlur(tex_px * 0.02))
+    return Image.composite(food, base, mask)
+
+def make_normal_map(color_im: Image.Image, amplify: float = 3.0) -> Image.Image:
+    """Cheap bump map from the texture's own luminance gradient — real food isn't flat,
+    so letting rice grains / char / sauce ripples perturb the surface normal is what
+    keeps the dome from reading as 'photo glued onto a smooth blob' as it catches light."""
+    g = color_im.convert("L").filter(ImageFilter.GaussianBlur(0.7))
+    dx = ImageChops.subtract(g, ImageChops.offset(g, -1, 0), scale=1.0 / amplify, offset=128)
+    dy = ImageChops.subtract(g, ImageChops.offset(g, 0, -1), scale=1.0 / amplify, offset=128)
+    b = Image.new("L", g.size, 255)
+    return Image.merge("RGB", (dx, dy, b))
+
+def build_glb(src_photo: str, out: str, tex_px: int = 768, dome_scale: float = 1.0) -> None:
     R = PLATE_D / 2
     pos, nrm, uv, idx = [], [], [], []
 
@@ -84,9 +142,9 @@ def build_glb(src_photo: str, out: str, tex_px: int = 768) -> None:
     for i in range(NR + 1):
         t = i / NR
         r = t * R
-        y = profile(t)
+        y = profile(t, dome_scale)
         dt = 1e-4
-        slope = (profile(min(1.0, t + dt)) - profile(max(0.0, t - dt))) / ((min(1.0, t + dt) - max(0.0, t - dt)) * R)
+        slope = (profile(min(1.0, t + dt), dome_scale) - profile(max(0.0, t - dt), dome_scale)) / ((min(1.0, t + dt) - max(0.0, t - dt)) * R)
         for j in range(NS):
             a = 2 * math.pi * j / NS
             cx, cz = math.cos(a), math.sin(a)
@@ -106,7 +164,7 @@ def build_glb(src_photo: str, out: str, tex_px: int = 768) -> None:
 
     # --- outer wall
     base = len(pos)
-    y_top = profile(1.0)
+    y_top = profile(1.0, dome_scale)
     for ring_y in (y_top, -DEPTH):
         for j in range(NS):
             a = 2 * math.pi * j / NS
@@ -123,18 +181,19 @@ def build_glb(src_photo: str, out: str, tex_px: int = 768) -> None:
 
     # --- bottom
     cbase = len(pos)
-    pos.append((0.0, -DEPTH, 0.0)); nrm.append((0.0, -1.0, 0.0)); uv.append((0.5, 0.5))
+    pos.append((0.0, -DEPTH, 0.0)); nrm.append((0.0, -1.0, 0.0)); uv.append(planar_uv(R * 0.985, 0.0))
     for j in range(NS):
         a = 2 * math.pi * j / NS
         cx, cz = math.cos(a), math.sin(a)
         pos.append((R * cx, -DEPTH, R * cz)); nrm.append((0.0, -1.0, 0.0))
-        uv.append(planar_uv(R * cx * 0.6, R * cz * 0.6))
+        uv.append(planar_uv(R * cx * 0.985, R * cz * 0.985))   # clean ceramic band, not the food photo — this face is barely ever seen
     for j in range(NS):
         idx += [cbase, cbase + 1 + (j + 1) % NS, cbase + 1 + j]
 
-    # --- texture
-    im = square(Image.open(src_photo).convert("RGB"), margin=0.10).resize((tex_px, tex_px), Image.LANCZOS)
-    jpg = io.BytesIO(); im.save(jpg, "JPEG", quality=80, optimize=True); tex = jpg.getvalue()
+    # --- texture: ceramic plate + feathered food photo, plus a bump map derived from it
+    color_im = build_texture(src_photo, tex_px)
+    jpg = io.BytesIO(); color_im.save(jpg, "JPEG", quality=82, optimize=True); tex = jpg.getvalue()
+    nrm_buf = io.BytesIO(); make_normal_map(color_im).save(nrm_buf, "JPEG", quality=80, optimize=True); nrm_tex = nrm_buf.getvalue()
 
     # --- binary buffer
     def pad4(b): return b + b"\x00" * ((4 - len(b) % 4) % 4)
@@ -144,7 +203,7 @@ def build_glb(src_photo: str, out: str, tex_px: int = 768) -> None:
     u16 = len(pos) < 65536
     b_idx = struct.pack(("<%dH" if u16 else "<%dI") % len(idx), *idx)
     parts, views, off = [], [], 0
-    for data, target in ((b_pos, 34962), (b_nrm, 34962), (b_uv, 34962), (b_idx, 34963), (tex, None)):
+    for data, target in ((b_pos, 34962), (b_nrm, 34962), (b_uv, 34962), (b_idx, 34963), (tex, None), (nrm_tex, None)):
         d = pad4(data)
         v = {"buffer": 0, "byteOffset": off, "byteLength": len(data)}
         if target: v["target"] = target
@@ -161,9 +220,10 @@ def build_glb(src_photo: str, out: str, tex_px: int = 768) -> None:
                                     "indices": 3, "material": 0}]}],
         "materials": [{"name": "dish", "doubleSided": False,
                        "pbrMetallicRoughness": {"baseColorTexture": {"index": 0},
-                                                "metallicFactor": 0.0, "roughnessFactor": 0.6}}],
-        "textures": [{"sampler": 0, "source": 0}],
-        "images": [{"bufferView": 4, "mimeType": "image/jpeg"}],
+                                                "metallicFactor": 0.0, "roughnessFactor": 0.55},
+                       "normalTexture": {"index": 1}}],
+        "textures": [{"sampler": 0, "source": 0}, {"sampler": 0, "source": 1}],
+        "images": [{"bufferView": 4, "mimeType": "image/jpeg"}, {"bufferView": 5, "mimeType": "image/jpeg"}],
         "samplers": [{"magFilter": 9729, "minFilter": 9987, "wrapS": 33071, "wrapT": 33071}],
         "accessors": [
             {"bufferView": 0, "componentType": 5126, "count": len(pos), "type": "VEC3", "min": mins, "max": maxs},
@@ -188,7 +248,7 @@ if __name__ == "__main__":
     jobs += [(f"assets/cat/{n}.jpg", n) for n in ("thai", "chinese", "fastfood", "continental")]
     for src, slug in jobs:
         build_images(src, slug)
-        build_glb(src, f"models/{slug}.glb")
+        build_glb(src, f"models/{slug}.glb", dome_scale=DOME_SCALE.get(slug, 1.0))
         print(f"{slug:20s} {os.path.getsize(f'models/{slug}.glb')//1024:5d} KB glb")
     hero = Image.open("assets/cat/hero.jpg").convert("RGB")
     for w in (900, 1600):
